@@ -175,6 +175,57 @@ class ImageProcessor {
     return { matrix: result, width: w, height: h };
   }
 
+  /**
+   * Simple threshold binarization (no error diffusion).
+   * Optionally applies brightness/contrast first.
+   * @returns {{ matrix: Uint8Array, width, height }}
+   */
+  thresholdBinarize(imageData, threshold, options) {
+    const w = imageData.width, h = imageData.height;
+    let gray = this.toGrayscale(imageData);
+    if (options && (options.brightness !== 0 || options.contrast !== 0)) {
+      gray = this.adjustBrightnessContrast(gray, options.brightness || 0, options.contrast || 0);
+    }
+    const result = new Uint8Array(w * h);
+    for (let i = 0; i < gray.length; i++) {
+      const v = Math.max(0, Math.min(255, gray[i]));
+      result[i] = v <= threshold ? 1 : 0;
+    }
+    return { matrix: result, width: w, height: h };
+  }
+
+  /**
+   * Proportional scale using canvas resize.
+   * @param {number} factor  scale factor (e.g. 0.5 = half, 2 = double)
+   * @returns {{ imageData, width, height }}
+   */
+  scaleImage(factor) {
+    if (!this.originalImage) throw new Error('没有加载图片');
+    const src = this.originalImage;
+    const w = Math.round(src.width * factor);
+    const h = Math.round(src.height * factor);
+    if (w < 1 || h < 1) throw new Error('缩放后尺寸太小');
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = factor > 1 ? false : true;
+    ctx.drawImage(src, 0, 0, w, h);
+    return { imageData: ctx.getImageData(0, 0, w, h), width: w, height: h };
+  }
+
+  /**
+   * Get image data at original size (no scaling).
+   */
+  getOriginalImageData() {
+    if (!this.originalImage) throw new Error('没有加载图片');
+    const src = this.originalImage;
+    const canvas = document.createElement('canvas');
+    canvas.width = src.width; canvas.height = src.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    return { imageData: ctx.getImageData(0, 0, src.width, src.height), width: src.width, height: src.height };
+  }
+
   /** Create a canvas from the binary dithered matrix for preview */
   ditheredToCanvas(dithered) {
     const { matrix, width, height } = dithered;
