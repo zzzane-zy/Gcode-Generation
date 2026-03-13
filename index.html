@@ -4,25 +4,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="将彩色图片通过Jarvis抖动算法转换为激光雕刻G代码的在线工具">
-    <title>Image → G-code 激光点阵生成器</title>
+    <meta name="description" content="将图片通过像素级控制转换为激光雕刻G代码的在线工具">
+    <title>Image → G-code 像素级激光控制</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <!-- ====== Header ====== -->
     <header class="app-header">
         <div style="display:flex;align-items:center;">
             <span class="app-title">⚡ Image → G-code</span>
-            <span class="app-subtitle">激光点阵代码生成器</span>
+            <span class="app-subtitle">像素级激光控制生成器</span>
         </div>
-        <span style="font-size:0.72rem;color:var(--text-muted);">Jarvis Dithering · 双向扫描 · 在线处理</span>
+        <span style="font-size:0.72rem;color:var(--text-muted);">Pixel-by-Pixel · 双向/单向 · 强制关光</span>
     </header>
 
     <div class="app-container">
 
-        <!-- ====== Left Panel – Parameters ====== -->
+        <!-- ====== Left Panel ====== -->
         <aside class="panel-left">
 
             <!-- Input Mode Toggle -->
@@ -36,7 +35,7 @@
                 </div>
             </div>
 
-            <!-- Image Upload (shown in image mode) -->
+            <!-- Image Upload -->
             <div class="card" id="card-image-upload">
                 <div class="card-title"><span class="icon">📷</span> 上传图片</div>
                 <div class="upload-area" id="upload-area">
@@ -49,7 +48,7 @@
                 <div class="image-info" id="image-info"></div>
             </div>
 
-            <!-- G-code Upload (shown in gcode mode) -->
+            <!-- G-code Upload -->
             <div class="card" id="card-gcode-upload" style="display:none;">
                 <div class="card-title"><span class="icon">📄</span> 上传 G25 文件</div>
                 <div class="upload-area" id="gcode-upload-area">
@@ -63,186 +62,131 @@
             </div>
 
             <script>
-                // Toggle input mode
                 document.querySelectorAll('input[name="input-mode"]').forEach(r => {
                     r.addEventListener('change', () => {
                         const isImage = document.querySelector('input[name="input-mode"]:checked').value === 'image';
                         document.getElementById('card-image-upload').style.display = isImage ? '' : 'none';
                         document.getElementById('card-gcode-upload').style.display = isImage ? 'none' : '';
-                        // Hide image-only cards in gcode mode
-                        const imageOnlyCards = document.querySelectorAll('.image-only-card');
-                        imageOnlyCards.forEach(c => c.style.display = isImage ? '' : 'none');
+                        document.querySelectorAll('.image-only-card').forEach(c => c.style.display = isImage ? '' : 'none');
                     });
                 });
             </script>
 
-            <!-- Resolution Mode (image only) -->
+            <!-- ① Image Processing -->
             <div class="card image-only-card">
-                <div class="card-title"><span class="icon">�</span> 尺寸与分辨率</div>
-                <div class="form-row">
-                    <label>锁定维度</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="dim-mode" value="width" checked> 宽度</label>
-                        <label><input type="radio" name="dim-mode" value="height"> 高度</label>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <label>目标尺寸</label>
-                    <input type="number" id="param-target-dim" value="50" min="1" max="500" step="0.1">
-                    <span style="color:var(--text-muted);font-size:0.78rem">mm</span>
-                </div>
-                <div class="form-row">
-                    <label>光斑 X</label>
-                    <input type="number" id="param-spot-x" value="100" min="1" max="5000" step="1">
-                    <span style="color:var(--text-muted);font-size:0.78rem">μm</span>
-                    <span class="tooltip" data-tip="X方向激光光斑直径(微米)，物理参数">❓</span>
-                </div>
-                <div class="form-row">
-                    <label>光斑 Y</label>
-                    <input type="number" id="param-spot-y" value="100" min="1" max="5000" step="1">
-                    <span style="color:var(--text-muted);font-size:0.78rem">μm</span>
-                    <span class="tooltip" data-tip="Y方向激光光斑直径(微米)，物理参数">❓</span>
-                </div>
+                <div class="card-title"><span class="icon">🖼️</span> 图像处理</div>
 
-                <!-- Mode Toggle -->
-                <div style="border-top:1px solid var(--border);margin:12px 0 8px;padding-top:12px;">
-                    <div class="form-row" style="margin-bottom:8px;">
-                        <label style="min-width:auto;font-weight:600;color:var(--accent)">分辨率模式</label>
+                <!-- Physical Size -->
+                <div style="border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px;">
+                    <div class="form-row">
+                        <label>锁定维度</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="dim-mode" value="width" checked> 宽度</label>
+                            <label><input type="radio" name="dim-mode" value="height"> 高度</label>
+                        </div>
                     </div>
                     <div class="form-row">
-                        <div class="radio-group" style="flex-direction:column;gap:6px;">
-                            <label style="font-size:0.78rem"><input type="radio" name="res-mode" value="density"
-                                    checked> 模式1: 设定线密度 → 自动放大</label>
-                            <label style="font-size:0.78rem"><input type="radio" name="res-mode" value="upscale"> 模式2:
-                                设定放大倍数 → 自动线密度</label>
-                            <label style="font-size:0.78rem"><input type="radio" name="res-mode" value="dpi"> 模式3:
-                                设定DPI → 原图不缩放</label>
+                        <label>物理尺寸</label>
+                        <input type="number" id="param-target-dim" value="50" min="1" max="500" step="0.1">
+                        <span style="color:var(--text-muted);font-size:0.78rem">mm</span>
+                    </div>
+                </div>
+
+                <!-- Scaling -->
+                <div style="border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px;">
+                    <div class="form-row">
+                        <label>等比缩放</label>
+                        <div class="radio-group">
+                            <label><input type="checkbox" id="param-scale-enable" style="accent-color:var(--accent)"> 启用</label>
+                        </div>
+                    </div>
+                    <div class="form-row" id="scale-factor-row" style="display:none;">
+                        <label>缩放倍数</label>
+                        <input type="number" id="param-scale-factor" value="1.0" min="0.1" max="16" step="0.1">
+                        <span class="tooltip" data-tip="&lt;1 缩小, &gt;1 放大, 1=原始大小">❓</span>
+                    </div>
+                </div>
+
+                <!-- Inversion -->
+                <div style="border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px;">
+                    <div class="form-row">
+                        <label>反色</label>
+                        <div class="radio-group">
+                            <label><input type="checkbox" id="param-invert" style="accent-color:var(--accent)"> 启用反色</label>
+                        </div>
+                        <span class="tooltip" data-tip="反转灰度值 (白变黑，黑变白)">❓</span>
+                    </div>
+                </div>
+
+                <!-- Binarization -->
+                <div>
+                    <div class="form-row">
+                        <label>二值化</label>
+                        <div class="radio-group">
+                            <label><input type="checkbox" id="param-bin-enable" checked style="accent-color:var(--accent)"> 启用</label>
+                        </div>
+                    </div>
+                    <div id="bin-options">
+                        <div class="form-row">
+                            <label>类型</label>
+                            <select id="param-bin-type" style="flex:1;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:0.82rem;">
+                                <option value="threshold">简单阈值</option>
+                                <option value="jarvis" selected>Jarvis 抖动</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label>阈值</label>
+                            <input type="number" id="param-threshold" value="128" min="0" max="255" step="1">
+                        </div>
+                        <div class="form-row">
+                            <label>亮度</label>
+                            <input type="number" id="param-brightness" value="0" min="-100" max="100" step="5">
+                        </div>
+                        <div class="form-row">
+                            <label>对比度</label>
+                            <input type="number" id="param-contrast" value="0" min="-100" max="100" step="5">
+                        </div>
+                        <div id="jarvis-coeff-section">
+                            <div style="margin-top:8px">
+                                <label style="font-size:0.78rem;color:var(--text-secondary);">Jarvis 扩散系数
+                                    <span class="tooltip" data-tip="Jarvis-Judice-Ninke 误差扩散矩阵。分母自动计算。">❓</span>
+                                </label>
+                                <div class="coeff-grid">
+                                    <div class="coeff-empty"></div>
+                                    <div class="coeff-empty"></div>
+                                    <input class="coeff-center" value="*" disabled title="当前像素">
+                                    <input type="number" id="j-r1" value="7" min="0" max="48">
+                                    <input type="number" id="j-r2" value="5" min="0" max="48">
+                                    <input type="number" id="j-d1a" value="3" min="0" max="48">
+                                    <input type="number" id="j-d1b" value="5" min="0" max="48">
+                                    <input type="number" id="j-d1c" value="7" min="0" max="48">
+                                    <input type="number" id="j-d1d" value="5" min="0" max="48">
+                                    <input type="number" id="j-d1e" value="3" min="0" max="48">
+                                    <input type="number" id="j-d2a" value="1" min="0" max="48">
+                                    <input type="number" id="j-d2b" value="3" min="0" max="48">
+                                    <input type="number" id="j-d2c" value="5" min="0" max="48">
+                                    <input type="number" id="j-d2d" value="3" min="0" max="48">
+                                    <input type="number" id="j-d2e" value="1" min="0" max="48">
+                                </div>
+                                <div class="coeff-label">分母自动计算 = Σ所有系数 (标准: 48)</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Mode 1: Line density inputs -->
-                <div id="mode-density-inputs">
-                    <div class="form-row">
-                        <label>X线密度</label>
-                        <input type="number" id="param-xdensity" value="100" min="1" max="1000" step="1">
-                        <span style="color:var(--text-muted);font-size:0.78rem">线/cm</span>
-                        <span class="tooltip" data-tip="X方向点密度。点间距 = 10/密度 mm。系统自动计算放大倍数">❓</span>
-                    </div>
-                    <div class="form-row">
-                        <label>Y线密度</label>
-                        <input type="number" id="param-ydensity" value="100" min="1" max="1000" step="1">
-                        <span style="color:var(--text-muted);font-size:0.78rem">线/cm</span>
-                        <span class="tooltip" data-tip="Y方向线密度。行间距 = 10/密度 mm。系统自动计算放大倍数">❓</span>
-                    </div>
-                </div>
-
-                <!-- Mode 2: Upscale factor input -->
-                <div id="mode-upscale-inputs" style="display:none;">
-                    <div class="form-row">
-                        <label>放大倍数</label>
-                        <input type="number" id="param-upscale" value="2" min="1" max="16" step="1">
-                        <span class="tooltip" data-tip="整数倍最近邻无损放大。系统根据放大后像素和目标尺寸自动计算最优X/Y线密度">❓</span>
-                    </div>
-                </div>
-
-                <!-- Mode 3: DPI input -->
-                <div id="mode-dpi-inputs" style="display:none;">
-                    <div class="form-row">
-                        <label>DPI</label>
-                        <input type="number" id="param-dpi" value="300" min="1" max="2400" step="1">
-                        <span class="tooltip" data-tip="每英寸点数。原图每个像素 = 1个加工点，不缩放。图像物理尺寸 = 像素数 / DPI × 25.4mm">❓</span>
-                    </div>
-                </div>
+                <!-- Pixel Info (filled by JS) -->
+                <div id="pixel-info" style="margin-top:12px;padding:10px;background:rgba(0,212,255,0.05);border-radius:8px;font-size:0.78rem;display:none;"></div>
             </div>
 
             <script>
-                // Toggle resolution mode inputs
-                document.querySelectorAll('input[name="res-mode"]').forEach(r => {
-                    r.addEventListener('change', () => {
-                        const mode = document.querySelector('input[name="res-mode"]:checked').value;
-                        document.getElementById('mode-density-inputs').style.display = mode === 'density' ? '' : 'none';
-                        document.getElementById('mode-upscale-inputs').style.display = mode === 'upscale' ? '' : 'none';
-                        document.getElementById('mode-dpi-inputs').style.display = mode === 'dpi' ? '' : 'none';
-                    });
+                document.getElementById('param-scale-enable').addEventListener('change', function() {
+                    document.getElementById('scale-factor-row').style.display = this.checked ? '' : 'none';
                 });
-            </script>
-
-            <!-- Invert (independent, always visible in image mode) -->
-            <div class="card image-only-card">
-                <div class="card-title"><span class="icon">🔄</span> 反色</div>
-                <div class="form-row">
-                    <label>反色</label>
-                    <div class="radio-group">
-                        <label><input type="checkbox" id="param-invert" style="accent-color:var(--accent)">
-                            启用反色</label>
-                    </div>
-                    <span class="tooltip" data-tip="反转灰度值 (白变黑，黑变白)，适用于深色背景图片">❓</span>
-                </div>
-            </div>
-
-            <!-- Processing Parameters (image only) -->
-            <div class="card image-only-card">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-                    <span><span class="icon">🎨</span> 处理参数</span>
-                    <label
-                        style="font-size:0.72rem;font-weight:400;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                        <input type="checkbox" id="param-processing-enabled" checked
-                            style="accent-color:var(--accent);">
-                        启用二值化
-                    </label>
-                </div>
-                <div id="processing-params-body">
-                    <div class="form-row">
-                        <label>亮度</label>
-                        <input type="number" id="param-brightness" value="0" min="-100" max="100" step="5">
-                        <span class="tooltip" data-tip="调整亮度 (-100 到 +100)，正值提亮，负值变暗。全黑时试试 +30~+60">❓</span>
-                    </div>
-                    <div class="form-row">
-                        <label>对比度</label>
-                        <input type="number" id="param-contrast" value="0" min="-100" max="100" step="5">
-                        <span class="tooltip" data-tip="调整对比度 (-100 到 +100)，正值增强对比，负值降低。推荐 +20~+50 让细节更清晰">❓</span>
-                    </div>
-
-                    <div class="form-row">
-                        <label>阈值</label>
-                        <input type="number" id="param-threshold" value="128" min="0" max="255" step="1">
-                        <span class="tooltip" data-tip="灰度二值化阈值 (0-255)，低于此值为黑点">❓</span>
-                    </div>
-                    <div style="margin-top:8px">
-                        <label style="font-size:0.78rem;color:var(--text-secondary);">Jarvis 扩散系数
-                            <span class="tooltip"
-                                data-tip="Jarvis-Judice-Ninke 误差扩散矩阵。分母自动计算为所有系数之和。默认标准系数: 7,5 / 3,5,7,5,3 / 1,3,5,3,1">❓</span>
-                        </label>
-                        <div class="coeff-grid">
-                            <!-- Row 0: current pixel row -->
-                            <div class="coeff-empty"></div>
-                            <div class="coeff-empty"></div>
-                            <input class="coeff-center" value="*" disabled title="当前像素位置">
-                            <input type="number" id="j-r1" value="7" min="0" max="48" title="右+1 权重">
-                            <input type="number" id="j-r2" value="5" min="0" max="48" title="右+2 权重">
-                            <!-- Row 1: next row -->
-                            <input type="number" id="j-d1a" value="3" min="0" max="48" title="下一行 左-2 权重">
-                            <input type="number" id="j-d1b" value="5" min="0" max="48" title="下一行 左-1 权重">
-                            <input type="number" id="j-d1c" value="7" min="0" max="48" title="下一行 中心 权重">
-                            <input type="number" id="j-d1d" value="5" min="0" max="48" title="下一行 右+1 权重">
-                            <input type="number" id="j-d1e" value="3" min="0" max="48" title="下一行 右+2 权重">
-                            <!-- Row 2: two rows down -->
-                            <input type="number" id="j-d2a" value="1" min="0" max="48" title="下两行 左-2 权重">
-                            <input type="number" id="j-d2b" value="3" min="0" max="48" title="下两行 左-1 权重">
-                            <input type="number" id="j-d2c" value="5" min="0" max="48" title="下两行 中心 权重">
-                            <input type="number" id="j-d2d" value="3" min="0" max="48" title="下两行 右+1 权重">
-                            <input type="number" id="j-d2e" value="1" min="0" max="48" title="下两行 右+2 权重">
-                        </div>
-                        <div class="coeff-label">分母自动计算 = Σ所有系数 (标准: 48)</div>
-                    </div>
-                </div><!-- /processing-params-body -->
-            </div>
-
-            <script>
-                // Toggle processing params visibility
-                document.getElementById('param-processing-enabled').addEventListener('change', function () {
-                    document.getElementById('processing-params-body').style.display = this.checked ? '' : 'none';
+                document.getElementById('param-bin-enable').addEventListener('change', function() {
+                    document.getElementById('bin-options').style.display = this.checked ? '' : 'none';
+                });
+                document.getElementById('param-bin-type').addEventListener('change', function() {
+                    document.getElementById('jarvis-coeff-section').style.display = this.value === 'jarvis' ? '' : 'none';
                 });
             </script>
 
@@ -265,47 +209,64 @@
             <div class="card">
                 <div class="card-title"><span class="icon">⚙️</span> 机器参数</div>
                 <div class="form-row">
+                    <label>扫描模式</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="scan-mode" value="bidirectional" checked> 双向</label>
+                        <label><input type="radio" name="scan-mode" value="unidirectional"> 单向</label>
+                    </div>
+                </div>
+                <div class="form-row">
                     <label>速度 v</label>
                     <input type="number" id="param-speed" value="200" min="1" max="10000" step="1">
                     <span style="color:var(--text-muted);font-size:0.78rem">mm/s</span>
-                    <span class="tooltip" data-tip="加工运动速度">❓</span>
                 </div>
-
                 <div class="form-row">
-                    <label>脉冲时间 tp</label>
+                    <label>打点时长 tp</label>
                     <input type="number" id="param-tp" value="0.1" min="0.001" max="10" step="0.001">
                     <span style="color:var(--text-muted);font-size:0.78rem">ms</span>
-                    <span class="tooltip" data-tip="单个点的出光持续时间，脉冲宽度 = v × tp">❓</span>
+                    <span class="tooltip" data-tip="每个像素的出光持续时间">❓</span>
                 </div>
                 <div class="form-row">
-                    <label>功率 Pmin</label>
+                    <label>开光延时</label>
+                    <input type="number" id="param-on-delay" value="0" min="0" max="10" step="0.01">
+                    <span style="color:var(--text-muted);font-size:0.78rem">ms</span>
+                    <span class="tooltip" data-tip="发送开光指令到激光实际出光的时间延迟">❓</span>
+                </div>
+                <div class="form-row">
+                    <label>关光延时</label>
+                    <input type="number" id="param-off-delay" value="0" min="0" max="10" step="0.01">
+                    <span style="color:var(--text-muted);font-size:0.78rem">ms</span>
+                    <span class="tooltip" data-tip="发送关光指令到激光实际关闭的时间延迟，用于强制关光计算">❓</span>
+                </div>
+                <div class="form-row">
+                    <label>Pmin</label>
                     <input type="number" id="param-pmin" value="0" min="0" max="10000" step="1">
                     <span style="color:var(--text-muted);font-size:0.78rem">S值</span>
-                    <span class="tooltip" data-tip="关光时的S值 (通常为0)">❓</span>
                 </div>
                 <div class="form-row">
-                    <label>功率 Pmax</label>
+                    <label>Pmax</label>
                     <input type="number" id="param-pmax" value="300" min="0" max="10000" step="1">
                     <span style="color:var(--text-muted);font-size:0.78rem">S值</span>
-                    <span class="tooltip" data-tip="出光时的S值 (最大功率)">❓</span>
                 </div>
                 <div class="form-row">
                     <label>加速度 a</label>
                     <input type="number" id="param-accel" value="1000" min="100" max="50000" step="100">
                     <span style="color:var(--text-muted);font-size:0.78rem">mm/s²</span>
-                    <span class="tooltip" data-tip="用于计算 overscan 距离 = v²/(2a)">❓</span>
                 </div>
                 <div class="form-row">
-                    <label>出光延时 t0</label>
-                    <input type="number" id="param-delay" value="0" min="0" max="10" step="0.01">
-                    <span style="color:var(--text-muted);font-size:0.78rem">ms</span>
-                    <span class="tooltip" data-tip="机器出光延迟，正向偏移 +v·t0，反向偏移 -v·t0，确保双向扫描叠合">❓</span>
-                </div>
-                <div class="form-row">
-                    <label>Y过冲 y_jog</label>
+                    <label>Y过冲</label>
                     <input type="number" id="param-yjog" value="0" min="0" max="20" step="0.01">
                     <span style="color:var(--text-muted);font-size:0.78rem">mm</span>
-                    <span class="tooltip" data-tip="Y轴反向间隙补偿：每次Y步进时先多走 y_jog，再回到目标位置，消除机械反向间隙">❓</span>
+                </div>
+                <div class="form-row">
+                    <label>光斑 X</label>
+                    <input type="number" id="param-spot-x" value="100" min="1" max="5000" step="1">
+                    <span style="color:var(--text-muted);font-size:0.78rem">μm</span>
+                </div>
+                <div class="form-row">
+                    <label>光斑 Y</label>
+                    <input type="number" id="param-spot-y" value="100" min="1" max="5000" step="1">
+                    <span style="color:var(--text-muted);font-size:0.78rem">μm</span>
                 </div>
             </div>
 
@@ -313,14 +274,13 @@
             <button class="btn btn-primary" id="btn-generate" disabled>🚀 开始生成</button>
             <button class="btn btn-download" id="btn-download" disabled>💾 下载 G-code</button>
             <button class="btn btn-download" id="btn-download-img" disabled
-                style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;">🖼️ 下载抖动预览图</button>
-
+                style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;">🖼️ 下载处理后图片</button>
         </aside>
 
         <!-- ====== Main Content ====== -->
         <main class="panel-main">
 
-            <!-- Image Previews (primary focus) -->
+            <!-- Image Previews + Pixel Viz -->
             <div class="preview-grid">
                 <div class="preview-box">
                     <div class="preview-header">🖼️ 原始图片</div>
@@ -329,61 +289,35 @@
                     </div>
                 </div>
                 <div class="preview-box">
-                    <div class="preview-header">🎨 Jarvis 抖动结果</div>
+                    <div class="preview-header">🎨 处理结果</div>
                     <div class="preview-body" id="preview-dithered">
-                        <div class="preview-placeholder" id="ph-dithered">处理后显示二值化预览</div>
+                        <div class="preview-placeholder" id="ph-dithered">处理后显示预览</div>
                     </div>
+                </div>
+                <div class="preview-box" id="pixel-viz-box" style="grid-column: 1 / -1;">
+                    <div class="preview-header">🔬 像素激光时序可视化 (单像素)</div>
+                    <div class="preview-body" id="pixel-viz-body">
+                        <div class="preview-placeholder" id="ph-pixel-viz">点击"开始生成"后显示时序图</div>
+                    </div>
+                    <div id="pixel-viz-info" style="padding:8px 12px;font-size:0.78rem;color:var(--text-secondary);text-align:center;"></div>
                 </div>
             </div>
 
-            <!-- Image & machining Info -->
+            <!-- Image & Machining Info -->
             <div class="gcode-output" id="image-detail-card" style="display:none;">
-                <div class="gcode-header">
-                    <span>📊 图像与加工信息</span>
-                </div>
+                <div class="gcode-header"><span>📊 图像与加工信息</span></div>
                 <div style="padding:12px;">
-                    <div id="image-detail-content"
-                        style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:0.82rem;"></div>
+                    <div id="image-detail-content" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:0.82rem;"></div>
                 </div>
             </div>
 
             <!-- Progress Steps -->
             <div class="progress-container">
                 <div class="progress-steps">
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">1</div>
-                        <div class="step-label">上传</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">2</div>
-                        <div class="step-label">放大</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">3</div>
-                        <div class="step-label">缩放</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">4</div>
-                        <div class="step-label">反色</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">5</div>
-                        <div class="step-label">抖动</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-line"></div>
-                        <div class="step-dot">6</div>
-                        <div class="step-label">居中</div>
-                    </div>
-                    <div class="step">
-                        <div class="step-dot">7</div>
-                        <div class="step-label">G代码</div>
-                    </div>
+                    <div class="step"><div class="step-line"></div><div class="step-dot">1</div><div class="step-label">上传</div></div>
+                    <div class="step"><div class="step-line"></div><div class="step-dot">2</div><div class="step-label">处理</div></div>
+                    <div class="step"><div class="step-line"></div><div class="step-dot">3</div><div class="step-label">二值化</div></div>
+                    <div class="step"><div class="step-dot">4</div><div class="step-label">G代码</div></div>
                 </div>
             </div>
 
@@ -395,6 +329,15 @@
                 </div>
             </div>
 
+            <!-- ④ Pixel Timing Visualization (preview-box style) -->
+            <div class="preview-box" id="pixel-viz-box" style="margin-top:16px;">
+                <div class="preview-header">🔬 像素激光时序可视化</div>
+                <div class="preview-body" id="pixel-viz-body">
+                    <div class="preview-placeholder" id="ph-pixel-viz">生成 G-code 后显示时序图</div>
+                </div>
+                <div id="pixel-viz-info" style="padding:8px 12px;font-size:0.78rem;color:var(--text-secondary);text-align:center;"></div>
+            </div>
+
         </main>
     </div>
 
@@ -404,12 +347,10 @@
         <span id="status-text">处理中...</span>
     </div>
 
-    <!-- Scripts (order matters) -->
     <script src="image-processor.js"></script>
     <script src="gcode-generator.js"></script>
     <script src="gcode-parser.js"></script>
     <script src="app.js"></script>
 
 </body>
-
 </html>
